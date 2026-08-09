@@ -1,0 +1,10 @@
+[package]
+name = "uu_torrent_info"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bendy = "0.6.1"
+landlock = "0.4.7"
+seccomp = "0.1.2"
+seccomp-sys = "0.1.3"

@@ -1,9 +1,14 @@
+use bendy::decoding::{Decoder, Error, Object};
 use std::collections::BTreeMap;
 use std::env;
 use std::fs;
 use std::process;
 
-use bendy::decoding::{Decoder, Error, Object};
+use crate::sec_landlock::appl_landlock;
+use crate::sec_seccomp::appl_seccomp;
+
+mod sec_landlock;
+mod sec_seccomp;
 
 // ---------- своё дерево bencode-значений ----------
 #[derive(Debug)]
@@ -76,6 +81,8 @@ fn main() {
         process::exit(1);
     }
 
+    appl_landlock(&args[1]).expect("LANDLOCK");
+    appl_seccomp();
     let data = fs::read(&args[1]).unwrap_or_else(|e| {
         eprintln!("Ошибка чтения файла: {e}");
         process::exit(1);

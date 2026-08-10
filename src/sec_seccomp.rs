@@ -19,6 +19,7 @@ const SYSCALLS: &[&str] = &[
     "sigaltstack",
     "exit_group",
     "write",
+    "brk",
 ];
 pub fn appl_seccomp() {
     let mut ctx = Context::default(Action::Errno(13)).unwrap();

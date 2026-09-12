@@ -1,6 +1,7 @@
 #![deny(clippy::all, clippy::pedantic, clippy::nursery, clippy::perf)]
 use crate::{sec_landlock::appl_landlock, sec_seccomp::appl_seccomp};
 use bendy::decoding::{Decoder, Error, Object};
+use hex::encode as hex_encode;
 use sha1::{Digest, Sha1};
 use std::{collections::BTreeMap, env, fs, process};
 use urlencoding::encode;
@@ -13,8 +14,8 @@ mod sec_seccomp;
 enum BValue {
     Bytes(Vec<u8>),
     Integer(i64),
-    List(Vec<BValue>),
-    Dict(BTreeMap<Vec<u8>, BValue>),
+    List(Vec<Self>),
+    Dict(BTreeMap<Vec<u8>, Self>),
 }
 fn encode_bvalue(val: &BValue, out: &mut Vec<u8>) {
     match val {
@@ -48,9 +49,6 @@ fn encode_bvalue(val: &BValue, out: &mut Vec<u8>) {
     }
 }
 
-fn hex_encode(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
-}
 // Рекурсивно превращаем потоковый Object в BValue
 fn object_to_bvalue(obj: Object) -> Result<BValue, Error> {
     match obj {
@@ -91,14 +89,14 @@ fn get_bytes(val: &BValue) -> Option<&[u8]> {
     }
 }
 
-fn get_integer(val: &BValue) -> Option<i64> {
+const fn get_integer(val: &BValue) -> Option<i64> {
     match val {
         BValue::Integer(i) => Some(*i),
         _ => None,
     }
 }
 
-fn get_list(val: &BValue) -> Option<&Vec<BValue>> {
+const fn get_list(val: &BValue) -> Option<&Vec<BValue>> {
     match val {
         BValue::List(list) => Some(list),
         _ => None,

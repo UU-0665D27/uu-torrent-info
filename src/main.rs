@@ -3,7 +3,7 @@ use crate::{sec_landlock::appl_landlock, sec_seccomp::appl_seccomp};
 use bendy::decoding::{Decoder, Error, Object};
 use hex::encode as hex_encode;
 use sha1::{Digest, Sha1};
-use std::{collections::BTreeMap, env, fs, process};
+use std::{collections::BTreeMap, env, fmt::Write as _, fs, process};
 use urlencoding::encode;
 
 mod sec_landlock;
@@ -150,7 +150,29 @@ fn main() {
         .and_then(get_bytes)
         .and_then(|b| std::str::from_utf8(b).ok())
         .unwrap_or("?");
-
+    // --- список дополнительных трекеров (announce-list) ---
+    let announce_list: Vec<&str> = root
+        .get(b"announce-list".as_slice())
+        .and_then(get_list)
+        .map(|tiers| {
+            tiers
+                .iter()
+                .filter_map(get_list)
+                .flatten()
+                .filter_map(get_bytes)
+                .filter_map(|b| std::str::from_utf8(b).ok())
+                .collect()
+        })
+        .unwrap_or_default();
+    let mut all_trackers: Vec<&str> = Vec::new();
+    if announce != "?" {
+        all_trackers.push(announce);
+    }
+    for tr in &announce_list {
+        if !all_trackers.contains(tr) {
+            all_trackers.push(tr);
+        }
+    }
     let comment = root
         .get(b"comment".as_slice())
         .and_then(get_bytes)
@@ -223,17 +245,28 @@ fn main() {
 
     let total_size: u64 = files.iter().map(|(_, s)| s).sum();
 
+    let tr_params: String = all_trackers.iter().fold(String::new(), |mut out, tr| {
+        let _ = write!(out, "&tr={}", encode(tr));
+        out
+    });
+
     let magnet = format!(
-        "magnet:?xt=urn:btih:{}&dn={}&tr={}",
+        "magnet:?xt=urn:btih:{}&dn={}{}",
         info_hash,
         encode(name),
-        encode(announce)
+        tr_params
     );
 
     // ---------- красивый вывод ----------
     println!("Информация о торренте");
     println!("{:-<60}", "");
     println!("Трекер (announce):  {announce}");
+    if all_trackers.len() > 1 {
+        println!("Трекеры:");
+        for tr in &all_trackers {
+            println!("  - {tr}");
+        }
+    }
     println!("Info Hash (SHA1):    {info_hash}");
     println!("Magnet-ссылка:       {magnet}");
     if !comment.is_empty() {

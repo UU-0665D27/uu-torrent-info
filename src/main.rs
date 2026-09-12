@@ -1,12 +1,16 @@
 #![deny(clippy::all, clippy::pedantic, clippy::nursery, clippy::perf)]
-use crate::{sec_landlock::appl_landlock, sec_seccomp::appl_seccomp};
+
 use bendy::decoding::{Decoder, Error, Object};
 use hex::encode as hex_encode;
 use sha1::{Digest, Sha1};
 use std::{collections::BTreeMap, env, fmt::Write as _, fs, process};
 use urlencoding::encode;
 
+#[cfg(target_os = "linux")]
+use crate::{sec_landlock::appl_landlock, sec_seccomp::appl_seccomp};
+#[cfg(target_os = "linux")]
 mod sec_landlock;
+#[cfg(target_os = "linux")]
 mod sec_seccomp;
 
 // ---------- своё дерево bencode-значений ----------
@@ -114,8 +118,18 @@ fn main() {
         process::exit(1);
     }
 
-    appl_landlock(&args[1]).expect("LANDLOCK");
-    appl_seccomp();
+    #[cfg(target_os = "linux")]
+    {
+        appl_landlock(&args[1]).expect("LANDLOCK");
+        appl_seccomp();
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        eprintln!(
+            "Предупреждение: sandboxing (landlock/seccomp) доступен только на Linux, запуск без песочницы"
+        );
+    }
+
     let data = fs::read(&args[1]).unwrap_or_else(|e| {
         eprintln!("Ошибка чтения файла: {e}");
         process::exit(1);

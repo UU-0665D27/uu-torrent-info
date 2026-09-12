@@ -22,12 +22,12 @@ const SYSCALLS: &[&str] = &[
     "brk",
 ];
 pub fn appl_seccomp() {
-    let mut ctx = Context::default(Action::Errno(13)).unwrap();
+    let mut ctx = Context::default(Action::Errno(38)).unwrap();
 
     for syscall in SYSCALLS {
         if let Some(nr) = resolve_syscall(syscall) {
             let cmp = Compare::arg(0).with(0).using(Op::MaskedEq).build().unwrap();
-            let rule = Rule::new(nr as usize, cmp, Action::Allow);
+            let rule = Rule::new(nr.cast_unsigned() as usize, cmp, Action::Allow);
             let _ = ctx.add_rule(rule);
         }
     }

@@ -1,11 +1,9 @@
+#![deny(clippy::all, clippy::pedantic, clippy::nursery, clippy::perf)]
+use crate::{sec_landlock::appl_landlock, sec_seccomp::appl_seccomp};
 use bendy::decoding::{Decoder, Error, Object};
-use std::collections::BTreeMap;
-use std::env;
-use std::fs;
-use std::process;
-
-use crate::sec_landlock::appl_landlock;
-use crate::sec_seccomp::appl_seccomp;
+use sha1::{Digest, Sha1};
+use std::{collections::BTreeMap, env, fs, process};
+use urlencoding::encode;
 
 mod sec_landlock;
 mod sec_seccomp;
@@ -18,7 +16,41 @@ enum BValue {
     List(Vec<BValue>),
     Dict(BTreeMap<Vec<u8>, BValue>),
 }
+fn encode_bvalue(val: &BValue, out: &mut Vec<u8>) {
+    match val {
+        BValue::Bytes(b) => {
+            out.extend_from_slice(b.len().to_string().as_bytes());
+            out.push(b':');
+            out.extend_from_slice(b);
+        }
+        BValue::Integer(i) => {
+            out.push(b'i');
+            out.extend_from_slice(i.to_string().as_bytes());
+            out.push(b'e');
+        }
+        BValue::List(list) => {
+            out.push(b'l');
+            for item in list {
+                encode_bvalue(item, out);
+            }
+            out.push(b'e');
+        }
+        BValue::Dict(map) => {
+            out.push(b'd');
+            for (k, v) in map {
+                out.extend_from_slice(k.len().to_string().as_bytes());
+                out.push(b':');
+                out.extend_from_slice(k);
+                encode_bvalue(v, out);
+            }
+            out.push(b'e');
+        }
+    }
+}
 
+fn hex_encode(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
 // Рекурсивно превращаем потоковый Object в BValue
 fn object_to_bvalue(obj: Object) -> Result<BValue, Error> {
     match obj {
@@ -141,6 +173,12 @@ fn main() {
             process::exit(1);
         }
     };
+    // --- info hash ---
+    let mut info_bytes = Vec::new();
+    encode_bvalue(info_val, &mut info_bytes);
+    let mut hasher = Sha1::new();
+    hasher.update(&info_bytes);
+    let info_hash = hex_encode(&hasher.finalize());
 
     let name = info
         .get(b"name".as_slice())
@@ -190,11 +228,18 @@ fn main() {
     };
 
     let total_size: u64 = files.iter().map(|(_, s)| s).sum();
-
+    let magnet = format!(
+        "magnet:?xt=urn:btih:{}&dn={}&tr={}",
+        info_hash,
+        encode(name),
+        encode(announce)
+    );
     // ---------- красивый вывод ----------
     println!("Информация о торренте");
     println!("{:-<60}", "");
     println!("Трекер (announce):  {announce}");
+    println!("Info Hash (SHA1):    {info_hash}");
+    println!("Magnet-ссылка:       {magnet}");
     if !comment.is_empty() {
         println!("Комментарий:         {comment}");
     }

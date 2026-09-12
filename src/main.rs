@@ -17,6 +17,7 @@ enum BValue {
     List(Vec<Self>),
     Dict(BTreeMap<Vec<u8>, Self>),
 }
+
 fn encode_bvalue(val: &BValue, out: &mut Vec<u8>) {
     match val {
         BValue::Bytes(b) => {
@@ -75,6 +76,7 @@ fn object_to_bvalue(obj: Object) -> Result<BValue, Error> {
 }
 
 // ---------- вспомогательные извлекатели ----------
+#[allow(dead_code)]
 fn get_dict<'a>(val: &'a BValue, key: &[u8]) -> Option<&'a BValue> {
     match val {
         BValue::Dict(map) => map.get(key),
@@ -104,6 +106,7 @@ const fn get_list(val: &BValue) -> Option<&Vec<BValue>> {
 }
 
 // ---------- main ----------
+#[allow(clippy::too_many_lines, clippy::option_if_let_else)]
 fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() != 2 {
@@ -136,12 +139,9 @@ fn main() {
         process::exit(1);
     });
 
-    let root = match &root {
-        BValue::Dict(map) => map,
-        _ => {
-            eprintln!("Некорректный торрент-файл: ожидался словарь");
-            process::exit(1);
-        }
+    let BValue::Dict(root) = &root else {
+        eprintln!("Некорректный торрент-файл: ожидался словарь");
+        process::exit(1);
     };
 
     // --- общая информация ---
@@ -164,19 +164,17 @@ fn main() {
 
     // --- info-словарь ---
     let info_val = root.get(b"info".as_slice()).expect("Отсутствует info");
-    let info = match info_val {
-        BValue::Dict(map) => map,
-        _ => {
-            eprintln!("info должен быть словарём");
-            process::exit(1);
-        }
+    let BValue::Dict(info) = info_val else {
+        eprintln!("info должен быть словарём");
+        process::exit(1);
     };
+
     // --- info hash ---
     let mut info_bytes = Vec::new();
     encode_bvalue(info_val, &mut info_bytes);
     let mut hasher = Sha1::new();
     hasher.update(&info_bytes);
-    let info_hash = hex_encode(&hasher.finalize());
+    let info_hash = hex_encode(hasher.finalize());
 
     let name = info
         .get(b"name".as_slice())
@@ -187,12 +185,11 @@ fn main() {
     let piece_length = info
         .get(b"piece length".as_slice())
         .and_then(get_integer)
-        .map(|i| i as u64)
-        .unwrap_or(0);
+        .map_or(0, i64::cast_unsigned);
 
     // --- файлы ---
     let files: Vec<(Vec<String>, u64)> = if let Some(len_val) = info.get(b"length".as_slice()) {
-        let len = get_integer(len_val).map(|i| i as u64).unwrap_or(0);
+        let len = get_integer(len_val).map_or(0, i64::cast_unsigned);
         vec![(vec![name.to_string()], len)]
     } else if let Some(files_val) = info.get(b"files".as_slice()) {
         let list = get_list(files_val).expect("files должен быть списком");
@@ -202,8 +199,7 @@ fn main() {
                 let length = file_dict
                     .get(b"length".as_slice())
                     .and_then(get_integer)
-                    .map(|i| i as u64)
-                    .unwrap_or(0);
+                    .map_or(0, i64::cast_unsigned);
                 let path: Vec<String> = file_dict
                     .get(b"path".as_slice())
                     .and_then(get_list)
@@ -226,12 +222,14 @@ fn main() {
     };
 
     let total_size: u64 = files.iter().map(|(_, s)| s).sum();
+
     let magnet = format!(
         "magnet:?xt=urn:btih:{}&dn={}&tr={}",
         info_hash,
         encode(name),
         encode(announce)
     );
+
     // ---------- красивый вывод ----------
     println!("Информация о торренте");
     println!("{:-<60}", "");
@@ -247,11 +245,10 @@ fn main() {
     println!("Имя раздачи:         {name}");
     println!("Размер куска:        {piece_length} байт");
     println!("Количество файлов:   {}", files.len());
-    println!(
-        "Общий размер:        {} байт ({:.2} МБ)",
-        total_size,
-        total_size as f64 / 1_048_576.0
-    );
+
+    #[allow(clippy::cast_precision_loss)]
+    let total_size_mb = total_size as f64 / 1_048_576.0;
+    println!("Общий размер:        {total_size} байт ({total_size_mb:.2} МБ)");
     println!("{:-<60}", "");
 
     if files.len() == 1 && files[0].0.len() == 1 && files[0].0[0] == name {
